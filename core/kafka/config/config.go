@@ -46,6 +46,7 @@ func getBrokers() []string {
 }
 
 // GetProducerConfig 获取生产者配置
+// todo: 这里的writeConfig是不是可以改成最新的
 func (c *KafkaConfig) GetProducerConfig(topic string) kafka.WriterConfig {
 	return kafka.WriterConfig{
 		Brokers:      c.Brokers,
@@ -66,10 +67,10 @@ func (c *KafkaConfig) GetConsumerConfig(topic string) kafka.ReaderConfig {
 		Brokers:     c.Brokers,
 		Topic:       topic,
 		GroupID:     c.GroupID,
-		StartOffset: kafka.FirstOffset, // 等同于 "auto.offset.reset": "earliest"
-		MinBytes:    1,                 // 最小读取字节数
-		MaxBytes:    10e6,              // 最大读取字节数 (10MB)
-		MaxWait:     1 * time.Second,   // 最大等待时间
+		StartOffset: kafka.LastOffset, // 等同于 "auto.offset.reset": "latest"
+		MinBytes:    1,                // 最小读取字节数
+		MaxBytes:    10e6,             // 最大读取字节数 (10MB)
+		MaxWait:     1 * time.Second,  // 最大等待时间
 	}
 }
 
@@ -88,6 +89,7 @@ func (c *KafkaConfig) GetGroupConsumerConfig(topics []string) kafka.ConsumerGrou
 }
 
 // GetWriterForTopic 为指定主题创建 Writer
+// todo: 这里的NewWriter是不是可以改成最新的
 func (c *KafkaConfig) GetWriterForTopic(topic string) *kafka.Writer {
 	config := c.GetProducerConfig(topic)
 	return kafka.NewWriter(config)
@@ -140,19 +142,3 @@ func getEnvOrDefault(key, defaultValue string) string {
 	}
 	return defaultValue
 }
-
-//// 主题配置
-//type TopicConfig struct {
-//	ScanTasks    string
-//	ScanResults  string
-//	ScanProgress string
-//}
-//
-//// GetTopicConfig 获取主题配置
-//func GetTopicConfig() TopicConfig {
-//	return TopicConfig{
-//		ScanTasks:    getEnvOrDefault("KAFKA_TOPIC_SCAN_TASKS", "scan-tasks"),
-//		ScanResults:  getEnvOrDefault("KAFKA_TOPIC_SCAN_RESULTS", "scan-results"),
-//		ScanProgress: getEnvOrDefault("KAFKA_TOPIC_SCAN_PROGRESS", "scan-progress"),
-//	}
-//}

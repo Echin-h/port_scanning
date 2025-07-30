@@ -2,7 +2,7 @@ package port
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -23,7 +23,7 @@ var StartCmd = &cobra.Command{
 	Example: "go run main.go scan -i 0.0.0.0 -p 80 -b 100",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := load(); err != nil {
-			fmt.Println(err.Error())
+			log.Println(err.Error())
 			os.Exit(1)
 		}
 	},
@@ -37,11 +37,11 @@ func init() {
 }
 
 func load() error {
-	fmt.Println("Message is publishing:")
-	fmt.Println("ip:", ip, "port:", port, "bandwidth: ", bandwidth, "wait:", wait)
+	log.Println("Message is Produceing:")
+	log.Println("ip:", ip, "port:", port, "bandwidth: ", bandwidth, "wait:", wait)
 
 	//创建Kafka发布器
-	publisher, err := kafka.NewKafkaPublisher()
+	Producer, err := kafka.NewKafkaProducer()
 	if err != nil {
 		return err
 	}
@@ -50,9 +50,20 @@ func load() error {
 	scanTask := message.NewScanTask(ip, port, bandwidth, wait)
 
 	// 发布扫描任务
-	if err = publisher.Publish(context.Background(), scanTask); err != nil {
-		return fmt.Errorf("failed to publish scan task: %s", err.Error())
+	if err = Producer.Produce(context.Background(), scanTask); err != nil {
+		log.Println("produce error: ", err)
+		return err
 	}
+
+	log.Println("Scan task Produceed successfully")
+
+	// 关闭发布器
+	if err := Producer.Close(); err != nil {
+		log.Println("Failed to close Kafka Producer:", err)
+		return err
+	}
+
+	log.Println("Kafka Producer closed successfully")
 
 	return nil
 }

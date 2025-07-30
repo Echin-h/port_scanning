@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -17,7 +18,7 @@ func NewIPValidator() *IPValidator {
 // ValidateIPs 验证IP字符串（支持单个IP、CIDR、IP范围、多个IP）
 func (v *IPValidator) ValidateIPs(ips string) error {
 	if ips == "" {
-		return fmt.Errorf("ips cannot be empty")
+		return errors.New("ips cannot be empty")
 	}
 
 	ips = strings.TrimSpace(ips)
@@ -45,13 +46,13 @@ func (v *IPValidator) ValidateIPs(ips string) error {
 func (v *IPValidator) validateCIDR(cidr string) error {
 	_, ipNet, err := net.ParseCIDR(cidr)
 	if err != nil {
-		return fmt.Errorf("invalid CIDR format: %s", cidr)
+		return errors.New("invalid CIDR format")
 	}
 
 	// 检查网络大小限制
 	ones, bits := ipNet.Mask.Size()
 	if bits-ones > 16 { // 限制最大65536个IP
-		return fmt.Errorf("CIDR network too large (max /16): %s", cidr)
+		return errors.New("CIDR network too large (max /16)")
 	}
 
 	return nil
@@ -61,17 +62,17 @@ func (v *IPValidator) validateCIDR(cidr string) error {
 func (v *IPValidator) validateIPRange(rangeStr string) error {
 	parts := strings.Split(rangeStr, "-")
 	if len(parts) != 2 {
-		return fmt.Errorf("invalid IP range format: %s", rangeStr)
+		return errors.New("invalid IP range format")
 	}
 
 	startIP := net.ParseIP(strings.TrimSpace(parts[0]))
 	endIP := net.ParseIP(strings.TrimSpace(parts[1]))
 
 	if startIP == nil {
-		return fmt.Errorf("invalid start IP: %s", strings.TrimSpace(parts[0]))
+		return errors.New("invalid start IP")
 	}
 	if endIP == nil {
-		return fmt.Errorf("invalid end IP: %s", strings.TrimSpace(parts[1]))
+		return errors.New("invalid end IP")
 	}
 
 	// 转换为IPv4
@@ -79,17 +80,17 @@ func (v *IPValidator) validateIPRange(rangeStr string) error {
 	endIPv4 := endIP.To4()
 
 	if startIPv4 == nil || endIPv4 == nil {
-		return fmt.Errorf("only IPv4 ranges are supported: %s", rangeStr)
+		return errors.New("only IPv4 ranges are supported")
 	}
 
 	// 检查IP范围是否合理
 	if compareIPs(startIPv4, endIPv4) > 0 {
-		return fmt.Errorf("start IP is greater than end IP: %s", rangeStr)
+		return errors.New("start IP is greater than end IP")
 	}
 
 	// 检查范围大小限制
 	if v.calculateIPRangeSize(startIPv4, endIPv4) > 65536 {
-		return fmt.Errorf("IP range too large (max 65536 IPs): %s", rangeStr)
+		return errors.New("IP range too large (max 65536 IPs)")
 	}
 
 	return nil
@@ -100,13 +101,13 @@ func (v *IPValidator) validateMultipleIPs(ips string) error {
 	ipList := strings.Split(ips, ",")
 
 	if len(ipList) > 1000 { // 限制最大1000个IP
-		return fmt.Errorf("too many IPs (max 1000): %d", len(ipList))
+		return errors.New("too many IPs (max 1000)")
 	}
 
 	for i, ip := range ipList {
 		ip = strings.TrimSpace(ip)
 		if err := v.validateSingleIP(ip); err != nil {
-			return fmt.Errorf("invalid IP at position %d: %w", i+1, err)
+			return errors.New(fmt.Sprintf("invalid IP at position %d: %s", i+1, err.Error()))
 		}
 	}
 
@@ -116,7 +117,7 @@ func (v *IPValidator) validateMultipleIPs(ips string) error {
 // validateSingleIP 验证单个IP
 func (v *IPValidator) validateSingleIP(ip string) error {
 	if net.ParseIP(ip) == nil {
-		return fmt.Errorf("invalid IP address: %s", ip)
+		return errors.New("invalid IP format")
 	}
 	return nil
 }

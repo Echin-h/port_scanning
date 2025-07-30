@@ -3,7 +3,7 @@ package message
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
+	"log"
 	"time"
 
 	"port_scanning/core/validator"
@@ -62,7 +62,8 @@ func (s *ScanTask) Validate() error {
 		return errors.New("ips is required")
 	}
 	if err := v.ValidateIPs(s.IPs); err != nil {
-		return fmt.Errorf("invalid ips: %w", err)
+		log.Println("IP validation error:", err)
+		return err
 	}
 
 	// 验证 Ports
@@ -70,17 +71,20 @@ func (s *ScanTask) Validate() error {
 		return errors.New("ports is required")
 	}
 	if err := v.ValidatePorts(s.Ports); err != nil {
-		return fmt.Errorf("invalid ports: %w", err)
+		log.Println("Port validation error:", err)
+		return err
 	}
 
 	// 验证 Bandwidth
 	if err := v.ValidateBandwidth(s.Bandwidth); err != nil {
-		return fmt.Errorf("invalid bandwidth: %w", err)
+		log.Println("Bandwidth validation error:", err)
+		return err
 	}
 
 	// 验证 Timeout
 	if err := v.ValidateTimeout(s.Timeout); err != nil {
-		return fmt.Errorf("invalid timeout: %w", err)
+		log.Println("Timeout validation error:", err)
+		return err
 	}
 
 	return nil

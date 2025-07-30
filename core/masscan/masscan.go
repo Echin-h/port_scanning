@@ -76,16 +76,19 @@ func (ms *MasscanScanner) Start() error {
 func (ms *MasscanScanner) executeMasscanWithProgress() error {
 	stdout, err := ms.cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("failed to create stdout pipe: %v", err)
+		log.Println(err)
+		return err
 	}
 
 	stderr, err := ms.cmd.StderrPipe()
 	if err != nil {
-		return fmt.Errorf("failed to create stderr pipe: %v", err)
+		log.Println(err)
+		return err
 	}
 
 	if err := ms.cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start masscan: %v", err)
+		log.Println(err)
+		return err
 	}
 
 	// 正则表达式定义
@@ -98,6 +101,7 @@ func (ms *MasscanScanner) executeMasscanWithProgress() error {
 	wg.Add(2)
 
 	// 处理stdout（主要是结果）
+	// todo: 分布式环境下的一致性, 如果其中一个panic，就会导致数据不一致性
 	go func() {
 		defer wg.Done()
 		scanner := bufio.NewScanner(stdout)
@@ -119,12 +123,13 @@ func (ms *MasscanScanner) executeMasscanWithProgress() error {
 
 		//如果输入停止，发送结果到Kafka
 		result.Total = len(result.Discovered)
-		if err := kafka.Publish(result); err != nil {
-			log.Printf("Failed to publish scan result to Kafka: %v", err)
+		if err := kafka.Produce(result); err != nil {
+			log.Printf("Failed to Produce scan result to Kafka: %v", err)
 		}
 	}()
 
 	// 处理stderr（主要是进度信息）
+	// 进度条的数值信息需要打印出来,
 	go func() {
 		defer wg.Done()
 		scanner := bufio.NewScanner(stderr)
@@ -142,6 +147,7 @@ func (ms *MasscanScanner) executeMasscanWithProgress() error {
 			}
 
 			// 解析进度信息 - 等待格式: rate:  0.00-kpps, 100.00% done, waiting 8-secs, found=2
+			// todo: 进度这里还是有问题，他只会收集最后的百分之百的情况，同时需要展示进度条
 			if matches := progressRegex.FindStringSubmatch(line); len(matches) == 5 {
 				rate := matches[1]
 				progress := matches[2]
@@ -186,7 +192,8 @@ func (ms *MasscanScanner) executeMasscanWithProgress() error {
 	if err := ms.cmd.Wait(); err != nil {
 		// 扫描完成，更新最终状态
 		updateScanProgress(message.FAILED, ms.cfg.TaskID, fmt.Sprintf("Scan failed: %v", err), "fail")
-		return fmt.Errorf("masscan command failed: %v", err)
+		log.Println("Masscan command failed:", err)
+		return err
 	}
 
 	return nil

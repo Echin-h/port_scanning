@@ -1,7 +1,8 @@
 package validator
 
 import (
-	"fmt"
+	"errors"
+	"log"
 	"strconv"
 	"strings"
 )
@@ -17,7 +18,7 @@ func NewPortValidator() *PortValidator {
 // ValidatePorts 验证端口字符串（支持单个端口、端口范围、多个端口）
 func (v *PortValidator) ValidatePorts(ports string) error {
 	if ports == "" {
-		return fmt.Errorf("ports cannot be empty")
+		return errors.New("ports cannot be empty")
 	}
 
 	ports = strings.TrimSpace(ports)
@@ -26,7 +27,7 @@ func (v *PortValidator) ValidatePorts(ports string) error {
 	portParts := strings.Split(ports, ",")
 
 	totalPorts := 0
-	for i, part := range portParts {
+	for _, part := range portParts {
 		part = strings.TrimSpace(part)
 
 		var portCount int
@@ -42,7 +43,8 @@ func (v *PortValidator) ValidatePorts(ports string) error {
 		}
 
 		if err != nil {
-			return fmt.Errorf("invalid port at position %d: %w", i+1, err)
+			log.Println("Port validation error:", err)
+			return err
 		}
 
 		totalPorts += portCount
@@ -50,7 +52,7 @@ func (v *PortValidator) ValidatePorts(ports string) error {
 
 	// 限制总端口数量
 	if totalPorts > 10000 {
-		return fmt.Errorf("too many ports (max 10000): %d", totalPorts)
+		return errors.New("total number of ports cannot exceed 10000")
 	}
 
 	return nil
@@ -60,36 +62,43 @@ func (v *PortValidator) ValidatePorts(ports string) error {
 func (v *PortValidator) validatePortRange(rangeStr string) (int, error) {
 	parts := strings.Split(rangeStr, "-")
 	if len(parts) != 2 {
-		return 0, fmt.Errorf("invalid port range format: %s", rangeStr)
+		log.Println("Invalid port range format:", rangeStr)
+		return 0, errors.New("invalid port range format, expected 'start-end'")
 	}
 
 	startPort, err := strconv.Atoi(strings.TrimSpace(parts[0]))
 	if err != nil {
-		return 0, fmt.Errorf("invalid start port: %s", parts[0])
+		log.Println("Error parsing start port:", err)
+		return 0, err
 	}
 
 	endPort, err := strconv.Atoi(strings.TrimSpace(parts[1]))
 	if err != nil {
-		return 0, fmt.Errorf("invalid end port: %s", parts[1])
+		log.Println("Error parsing end port:", err)
+		return 0, err
 	}
 
 	if err := v.validatePortNumber(startPort); err != nil {
-		return 0, fmt.Errorf("start port: %w", err)
+		log.Println("Start port validation error:", err)
+		return 0, err
 	}
 
 	if err := v.validatePortNumber(endPort); err != nil {
-		return 0, fmt.Errorf("end port: %w", err)
+		log.Println("End port validation error:", err)
+		return 0, err
 	}
 
 	if startPort > endPort {
-		return 0, fmt.Errorf("start port is greater than end port: %d-%d", startPort, endPort)
+		log.Println("Start port cannot be greater than end port:", startPort, ">", endPort)
+		return 0, errors.New("start port cannot be greater than end port")
 	}
 
 	portCount := endPort - startPort + 1
 
 	// 限制单个范围的端口数量
 	if portCount > 5000 {
-		return 0, fmt.Errorf("port range too large (max 5000 ports): %d-%d", startPort, endPort)
+		log.Println("Port range too large:", startPort, "-", endPort)
+		return 0, errors.New("port range cannot exceed 5000 ports")
 	}
 
 	return portCount, nil
@@ -99,7 +108,8 @@ func (v *PortValidator) validatePortRange(rangeStr string) (int, error) {
 func (v *PortValidator) validateSinglePort(portStr string) error {
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		return fmt.Errorf("invalid port number: %s", portStr)
+		log.Println("Error parsing port:", err)
+		return err
 	}
 
 	return v.validatePortNumber(port)
@@ -108,7 +118,8 @@ func (v *PortValidator) validateSinglePort(portStr string) error {
 // validatePortNumber 验证端口号范围
 func (v *PortValidator) validatePortNumber(port int) error {
 	if port < 1 || port > 65535 {
-		return fmt.Errorf("port out of range (1-65535): %d", port)
+		log.Println("Port number out of range:", port)
+		return errors.New("port number must be between 1 and 65535")
 	}
 	return nil
 }

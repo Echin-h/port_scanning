@@ -1,9 +1,10 @@
 package kafka
 
-// TODO: 每次发布一个就需要NewKafkaPublisher，这样会导致每次都创建新的writer，可能会导致资源浪费
+// TODO: 每次发布一个就需要NewKafkaProducer，这样会导致每次都创建新的writer，可能会导致资源浪费
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -14,43 +15,48 @@ import (
 	"port_scanning/core/kafka/message"
 )
 
-// KafkaPublisher Kafka发布器实现
-type KafkaPublisher struct {
+// KafkaProducer Kafka发布器实现
+type KafkaProducer struct {
 	writers map[string]*kafka.Writer // 每个topic一个writer
 	config  *config.KafkaConfig
-	closed  bool
-	mu      sync.RWMutex
+	//partitioner Partitioner // 分区器
+	closed bool
+	mu     sync.RWMutex
 }
 
-// NewKafkaPublisher 创建Kafka发布器
-func NewKafkaPublisher() (*KafkaPublisher, error) {
+// NewKafkaProducer 创建Kafka发布器
+func NewKafkaProducer() (*KafkaProducer, error) {
 	cfg := config.GetKafkaConfig()
 
-	kp := &KafkaPublisher{
+	kp := &KafkaProducer{
 		writers: make(map[string]*kafka.Writer),
-		config:  cfg,
-		closed:  false,
+		//partitioner: NewIPSegmentPartitioner(24), // 默认分区器
+		config: cfg,
+		closed: false,
 	}
 
 	return kp, nil
 }
 
-func Publish(message message.Message) error {
-	publisher, err := NewKafkaPublisher()
+func Produce(message message.Message) error {
+	producer, err := NewKafkaProducer()
 	if err != nil {
 		return err
 	}
 
+	defer producer.Close() // 确保资源被释放
+
 	ctx := context.Background()
-	if err := publisher.Publish(ctx, message); err != nil {
-		return fmt.Errorf("failed to publish message: %s", err.Error())
+	if err := producer.Produce(ctx, message); err != nil {
+		log.Printf("Failed to produce message: %v", err)
+		return err
 	}
 
 	return nil
 }
 
 // getWriter 获取或创建指定topic的writer
-func (kp *KafkaPublisher) getWriter(topic string) *kafka.Writer {
+func (kp *KafkaProducer) getWriter(topic string) *kafka.Writer {
 	kp.mu.Lock()
 	defer kp.mu.Unlock()
 
@@ -64,23 +70,23 @@ func (kp *KafkaPublisher) getWriter(topic string) *kafka.Writer {
 	return writer
 }
 
-// Publish 同步发布消息
-func (kp *KafkaPublisher) Publish(ctx context.Context, msg message.Message) error {
-	return kp.PublishToTopic(ctx, msg.GetTopic(), msg.GetKey(), msg.GetValue())
+// Produce 同步发布消息
+func (kp *KafkaProducer) Produce(ctx context.Context, msg message.Message) error {
+	return kp.ProduceToTopic(ctx, msg.GetTopic(), msg.GetKey(), msg.GetValue())
 }
 
-// PublishAsync 异步发布消息
-func (kp *KafkaPublisher) PublishAsync(ctx context.Context, msg message.Message, callback func(error)) {
+// ProduceAsync 异步发布消息
+func (kp *KafkaProducer) ProduceAsync(ctx context.Context, msg message.Message, callback func(error)) {
 	go func() {
-		err := kp.Publish(ctx, msg)
+		err := kp.Produce(ctx, msg)
 		if callback != nil {
 			callback(err)
 		}
 	}()
 }
 
-// PublishBatch 批量发布消息
-func (kp *KafkaPublisher) PublishBatch(ctx context.Context, msgs []message.Message) error {
+// ProduceBatch 批量发布消息
+func (kp *KafkaProducer) ProduceBatch(ctx context.Context, msgs []message.Message) error {
 	if len(msgs) == 0 {
 		return nil
 	}
@@ -88,14 +94,15 @@ func (kp *KafkaPublisher) PublishBatch(ctx context.Context, msgs []message.Messa
 	kp.mu.RLock()
 	if kp.closed {
 		kp.mu.RUnlock()
-		return fmt.Errorf("publisher is closed")
+		return errors.New("producer is closed")
 	}
 	kp.mu.RUnlock()
 
 	// 验证所有消息
-	for i, msg := range msgs {
+	for _, msg := range msgs {
 		if err := msg.Validate(); err != nil {
-			return fmt.Errorf("message %d validation failed: %w", i, err)
+			log.Println("Message validation failed:", err)
+			return err
 		}
 	}
 
@@ -128,7 +135,7 @@ func (kp *KafkaPublisher) PublishBatch(ctx context.Context, msgs []message.Messa
 				errChan <- fmt.Errorf("failed to write messages to topic %s: %w", t, err)
 				return
 			}
-			log.Printf("Successfully published %d messages to topic %s", len(msgs), t)
+			log.Printf("Successfully Produceed %d messages to topic %s", len(msgs), t)
 		}(topic, messages)
 	}
 
@@ -145,33 +152,43 @@ func (kp *KafkaPublisher) PublishBatch(ctx context.Context, msgs []message.Messa
 		}
 	}
 
-	log.Printf("Successfully published %d messages in total", len(msgs))
+	log.Printf("Successfully Produceed %d messages in total", len(msgs))
 	return nil
 }
 
-//PublishToTopic 直接向指定topic发布消息
-func (kp *KafkaPublisher) PublishToTopic(ctx context.Context, topic string, key string, value []byte) error {
+// ProduceToTopic 直接向指定topic发布消息
+func (kp *KafkaProducer) ProduceToTopic(ctx context.Context, topic string, key string, value []byte) error {
 	kp.mu.RLock()
 	if kp.closed {
 		kp.mu.RUnlock()
-		return fmt.Errorf("publisher is closed")
+		return errors.New("producer is closed")
 	}
 	kp.mu.RUnlock()
 
-	writer := kp.getWriter(topic)
+	// 获取分区
+	//partition, err := kp.partitioner.GetPartition(key, 2) // 硬编码为2个分区
+	//if err != nil {
+	//	log.Printf("Warning: failed to calculate partition for key %s, using partition 0: %v", key, err)
+	//	partition = 0
+	//}
+	//log.Println("Using partition:", partition)
 
+	writer := kp.getWriter(topic)
 	kafkaMsg := kafka.Message{
 		Key:   []byte(key),
 		Value: value,
+		//Partition: partition,
 		Headers: []kafka.Header{
 			{Key: "timestamp", Value: []byte(time.Now().Format(time.RFC3339))},
+			//{Key: "partition", Value: []byte(fmt.Sprintf("%d", partition))},
 		},
 		Time: time.Now(),
 	}
 
 	err := writer.WriteMessages(ctx, kafkaMsg)
 	if err != nil {
-		return fmt.Errorf("failed to write message to topic %s: %s", topic, err.Error())
+		log.Println("Failed to write message to topic:", topic, "Error:", err)
+		return err
 	}
 
 	log.Printf("Message delivered to topic %s", topic)
@@ -179,12 +196,12 @@ func (kp *KafkaPublisher) PublishToTopic(ctx context.Context, topic string, key 
 }
 
 // Flush 刷新所有writer的缓冲区
-func (kp *KafkaPublisher) Flush() error {
+func (kp *KafkaProducer) Flush() error {
 	kp.mu.RLock()
 	defer kp.mu.RUnlock()
 
 	if kp.closed {
-		return fmt.Errorf("publisher is closed")
+		return errors.New("producer is closed")
 	}
 
 	var wg sync.WaitGroup
@@ -215,7 +232,7 @@ func (kp *KafkaPublisher) Flush() error {
 }
 
 // Close 关闭发布器
-func (kp *KafkaPublisher) Close() error {
+func (kp *KafkaProducer) Close() error {
 	kp.mu.Lock()
 	defer kp.mu.Unlock()
 
@@ -244,6 +261,6 @@ func (kp *KafkaPublisher) Close() error {
 	// 清空writers map
 	kp.writers = make(map[string]*kafka.Writer)
 
-	log.Println("KafkaPublisher closed successfully")
+	log.Println("KafkaProducer closed successfully")
 	return nil
 }
