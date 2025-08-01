@@ -6,9 +6,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
-	_kafka "port_scanning/core/kafka"
+	"port_scanning/core/callback"
+	"port_scanning/core/kafka/consumer"
+	"port_scanning/core/kafka/producer"
 	"port_scanning/core/redis"
 )
 
@@ -21,7 +24,6 @@ var StartCmd = &cobra.Command{
 			log.Println(err.Error())
 			os.Exit(1)
 		}
-		stop()
 	},
 }
 
@@ -41,22 +43,57 @@ func load() error {
 
 	log.Println("Redis client loaded successfully")
 
+	// 创建Kafka发布器
+	_, err := producer.NewProducer([]string{"127.0.0.1:9092"},
+		producer.WithRequiredAcks(-1),
+		producer.WithAsync(false),
+		producer.WithProducerReadTimeout(10*time.Second),
+		producer.WithProducerWriteTimeout(10*time.Second),
+		producer.WithAutoTopicCreation(true),
+	)
+	if err != nil {
+		log.Println("Failed to create Kafka Producer:", err.Error())
+		return err
+	}
+	log.Println("Kafka Producer created successfully")
+
 	// 创建Kafka接收器
-	kafkaConsumer, err := _kafka.NewKafkaConsumer()
+	groupID := "scan-cons-group"
+	cfg, err := consumer.NewConsumerConfig([]string{"127.0.0.1:9092"},
+		consumer.WithGroupID(groupID),
+		consumer.WithCommitInterval(0),
+		consumer.WithLatestOffset(),
+		//kafka.WithEarliestOffset(),
+		consumer.WithMaxBytes(10*1024*1024), // 10MB
+		consumer.WithMinBytes(1),            // 10KB
+		consumer.WithDefaultLogger(),
+		consumer.WithDefaultErrorLogger(),
+		consumer.WithRoundRobinGroupBalancer(),
+		consumer.WithHeartbeatInterval(1*time.Second),
+		consumer.WithSessionTimeout(10*time.Second),
+	)
+
 	if err != nil {
 		log.Println("Failed to create Kafka Consumer:", err.Error())
 		return err
 	}
 
+	asyncCfg := &consumer.AsyncConfig{
+		WorkerCount: 10,   // 启动10个工作协程处理消息
+		QueueSize:   1000, // 每个工作协程的消息队
+	}
+
+	cons := consumer.NewConsumer(cfg, asyncCfg)
+
 	// 注册扫描任务处理回调函数
-	err = kafkaConsumer.RegisterCallback("scan-tasks", scanTaskMessageCallback)
+	err = cons.RegisterCallback("scan-tasks", callback.ScanTaskMessageCallback)
 	if err != nil {
 		log.Println("Failed to register scan task callback:", err.Error())
 		return err
 	}
 
 	// 启动接收器
-	err = kafkaConsumer.Start()
+	err = cons.Start()
 	if err != nil {
 		log.Println("Failed to start Kafka Consumer:", err.Error())
 		return err
@@ -71,7 +108,7 @@ func load() error {
 	sig := <-signalChan
 	log.Printf("Consumed signal: %s, shutting down...\n", sig)
 
-	if err := kafkaConsumer.Stop(); err != nil {
+	if err := cons.Stop(); err != nil {
 		log.Println("Failed to stop Kafka Consumer:", err.Error())
 		return err
 	}
@@ -84,8 +121,4 @@ func load() error {
 	log.Println("Server stopped gracefully")
 
 	return nil
-}
-
-func stop() {
-
 }

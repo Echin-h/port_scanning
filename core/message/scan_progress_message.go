@@ -10,21 +10,23 @@ import (
 // ScanProgress 扫描进度消息
 type ScanProgress struct {
 	BaseMessage
-	TaskID  string        `json:"task_id"`
-	Message string        `json:"message"` // 状态描述
-	Status  MessageStatus `json:"status"`  // running/completed/failed/cancelled
+	TaskID string `json:"task_id"`
+
+	Rate      float64  // kpps
+	Progress  float64  // 百分比
+	Remaining string   // 剩余时间
+	Found     int      // 发现的端口数
+	OpenPorts []string // 发现的开放端口
 }
 
 // NewScanProgress 创建扫描进度
-func NewScanProgress(taskID, message string, status MessageStatus) *ScanProgress {
+func NewScanProgress(taskID string) *ScanProgress {
 	return &ScanProgress{BaseMessage: BaseMessage{
 		ID:        generateID(),
 		Timestamp: time.Now(),
 		Topic:     "scan-progress",
 	},
-		TaskID:  taskID,
-		Status:  status,
-		Message: message,
+		TaskID: taskID,
 	}
 }
 

@@ -3,6 +3,7 @@ package message
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -20,18 +21,19 @@ type ScanTask struct {
 }
 
 // NewScanTask 创建扫描任务
-func NewScanTask(ips, ports string, bandwidth, wait int) *ScanTask {
+func NewScanTask(ip, ports string, bandwidth, timeout int) *ScanTask {
+	id := generateID() // 生成唯一ID
 	return &ScanTask{
 		BaseMessage: BaseMessage{
-			ID:        generateID(),
+			ID:        id,
 			Timestamp: time.Now(),
 			Topic:     "scan-tasks",
 		},
-		TaskID:    generateTaskID(),
-		IPs:       ips,       // 127.0.0.1
-		Ports:     ports,     // --ports 80,443
-		Bandwidth: bandwidth, // --bandwidth 100
-		Timeout:   wait,      // --wait 5s
+		TaskID:    fmt.Sprintf("scan-task:%s", id),
+		IPs:       ip,
+		Ports:     ports,
+		Bandwidth: bandwidth,
+		Timeout:   timeout,
 	}
 }
 

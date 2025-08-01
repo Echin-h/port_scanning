@@ -1,4 +1,4 @@
-package server
+package callback
 
 import (
 	"context"
@@ -7,11 +7,11 @@ import (
 	"log"
 
 	"github.com/segmentio/kafka-go"
-	"port_scanning/core/kafka/message"
 	"port_scanning/core/masscan"
+	"port_scanning/core/message"
 )
 
-func scanTaskMessageCallback(_ context.Context, msg *kafka.Message) error {
+func ScanTaskMessageCallback(_ context.Context, msg *kafka.Message) error {
 	if msg == nil {
 		return errors.New("consumed nil message")
 	}
@@ -20,7 +20,7 @@ func scanTaskMessageCallback(_ context.Context, msg *kafka.Message) error {
 	_ = json.Unmarshal(msg.Value, st)
 	ms := masscan.NewMasscanScanner().BuildMasscanCommand(st)
 
-	log.Println("execute command is: ", ms.GetCommand().String())
+	log.Println("开始执行命令: ", ms.GetCommand().String())
 	if err := ms.Start(); err != nil {
 		log.Println("failed to start masscan:", err.Error())
 		return err

@@ -51,7 +51,7 @@ func (v *PortValidator) ValidatePorts(ports string) error {
 	}
 
 	// 限制总端口数量
-	if totalPorts > 10000 {
+	if totalPorts > 50000 {
 		return errors.New("total number of ports cannot exceed 10000")
 	}
 
@@ -96,9 +96,9 @@ func (v *PortValidator) validatePortRange(rangeStr string) (int, error) {
 	portCount := endPort - startPort + 1
 
 	// 限制单个范围的端口数量
-	if portCount > 5000 {
+	if portCount > 50000 {
 		log.Println("Port range too large:", startPort, "-", endPort)
-		return 0, errors.New("port range cannot exceed 5000 ports")
+		return 0, errors.New("port range cannot exceed 50000 ports")
 	}
 
 	return portCount, nil

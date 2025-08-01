@@ -10,29 +10,25 @@ import (
 // ScanResult 扫描结果消息
 type ScanResult struct {
 	BaseMessage
-	TaskID     string   `json:"task_id"`
-	Status     string   `json:"status"` // open/closed/filtered
-	Discovered []string `json:"discovered"`
-	Total      int      `json:"total"` // 扫描结果总数
+	TaskID   string   `json:"task_id"`
+	OpenPort []string `json:"open_ports"` // 扫描到的开放端口
 }
 
 // NewScanResult 创建扫描结果
-func NewScanResult(taskID, status string) *ScanResult {
+func NewScanResult(id string) *ScanResult {
 	return &ScanResult{
 		BaseMessage: BaseMessage{
-			ID:        generateID(),
+			ID:        id,
 			Timestamp: time.Now(),
 			Topic:     "scan-results",
 		},
-		TaskID:     taskID,
-		Status:     status,
-		Discovered: []string{},
-		Total:      0,
+		TaskID:   fmt.Sprintf("scan-result:%s", id),
+		OpenPort: []string{},
 	}
 }
 
 func (s *ScanResult) GetKey() string {
-	return fmt.Sprintf("scan_result:%s", s.TaskID)
+	return s.TaskID
 }
 
 func (s *ScanResult) GetValue() []byte {

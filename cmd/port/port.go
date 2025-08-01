@@ -4,10 +4,11 @@ import (
 	"context"
 	"log"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
-	"port_scanning/core/kafka"
-	"port_scanning/core/kafka/message"
+	"port_scanning/core/kafka/producer"
+	"port_scanning/core/message"
 )
 
 var (
@@ -41,8 +42,15 @@ func load() error {
 	log.Println("ip:", ip, "port:", port, "bandwidth: ", bandwidth, "wait:", wait)
 
 	//创建Kafka发布器
-	Producer, err := kafka.NewKafkaProducer()
+	Producer, err := producer.NewProducer([]string{"127.0.0.1:9092"},
+		producer.WithRequiredAcks(-1),
+		producer.WithAsync(false),
+		producer.WithProducerReadTimeout(10*time.Second),
+		producer.WithProducerWriteTimeout(10*time.Second),
+		producer.WithAutoTopicCreation(true),
+	)
 	if err != nil {
+		log.Println("Failed to create Kafka Producer:", err.Error())
 		return err
 	}
 
@@ -58,7 +66,7 @@ func load() error {
 	log.Println("Scan task Produceed successfully")
 
 	// 关闭发布器
-	if err := Producer.Close(); err != nil {
+	if err = Producer.Close(); err != nil {
 		log.Println("Failed to close Kafka Producer:", err)
 		return err
 	}
